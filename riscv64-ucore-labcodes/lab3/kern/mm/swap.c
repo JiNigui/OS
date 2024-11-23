@@ -17,7 +17,7 @@
 // the max access seq number
 #define MAX_SEQ_NO 10
 
-static struct swap_manager *sm;
+static struct swap_manager *sm;//存储交换空间管理器的指针
 size_t max_swap_offset;
 
 volatile int swap_init_ok = 0;
@@ -62,19 +62,19 @@ int
 swap_tick_event(struct mm_struct *mm)
 {
      return sm->tick_event(mm);
-}
+}//处理每次时钟中断时的交换空间事件。
 
 int
 swap_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int swap_in)
 {
      return sm->map_swappable(mm, addr, page, swap_in);
-}
+}//用于将虚拟地址映射到可交换的物理页面。
 
 int
 swap_set_unswappable(struct mm_struct *mm, uintptr_t addr)
 {
      return sm->set_unswappable(mm, addr);
-}
+}//用于将虚拟地址设置为不可交换。
 
 volatile unsigned int swap_out_num=0;
 

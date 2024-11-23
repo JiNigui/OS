@@ -13,6 +13,7 @@
 #include <sbi.h>
 
 #define TICK_NUM 100
+int num = 0;
 
 static void print_ticks() {
     cprintf("%d ticks\n", TICK_NUM);
@@ -150,6 +151,9 @@ void interrupt_handler(struct trapframe *tf) {
             clock_set_next_event();
             if (++ticks % TICK_NUM == 0) {
                 print_ticks();
+                num++;
+                if(num==10)
+                   sbi_shutdown();
             }
             break;
         case IRQ_H_TIMER:

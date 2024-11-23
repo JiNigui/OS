@@ -14,7 +14,7 @@
  * so that -E_NO_MEM and E_NO_MEM are equivalent.
  * */
 
-static const char * const error_string[MAXERROR + 1] = {
+static const char * const error_string[MAXERROR + 1] = {//用于存储错误码对应的错误信息。MAXERROR应该是一个定义了的最大错误码的常量。
     [0]                     NULL,
     [E_UNSPECIFIED]         "unspecified error",
     [E_BAD_PROC]            "bad process",
