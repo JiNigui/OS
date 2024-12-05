@@ -103,7 +103,18 @@ alloc_proc(void) {
      *       char name[PROC_NAME_LEN + 1];               // Process name
      */
 
-
+        proc->state = PROC_UNINIT;                      //状态为未初始化
+        proc->pid = -1;                                 //pid为未赋值
+        proc->runs = 0;                                 //运行时间为0
+        proc->kstack = 0;                               //除了idleproc其他线程的内核栈都要后续分配
+        proc->need_resched = 0;                         //不需要调度切换线程
+        proc->parent = NULL;                            //没有父线程
+        proc->mm = NULL;                                //未分配内存
+        memset(&(proc->context), 0, sizeof(struct context));//将上下文变量全部赋值为0，清空
+        proc->tf = NULL;                                //初始化没有中断帧
+        proc->cr3 = boot_cr3;                           //内核线程的cr3为boot_cr3，即页目录为内核页目录表
+        proc->flags = 0;                                //标志位为0
+        memset(proc->name, 0, PROC_NAME_LEN+1);         //将线程名变量全部赋值为0，清空
     }
     return proc;
 }
@@ -172,7 +183,25 @@ proc_run(struct proc_struct *proc) {
         *   lcr3():                   Modify the value of CR3 register
         *   switch_to():              Context switching between two processes
         */
-       
+        bool intr_flag;
+        local_intr_save(intr_flag);
+        // 保存当前进程的上下文，并切换到新进程
+        struct proc_struct * temp = current;
+        current = proc;
+        // 切换页表，以便使用新进程的地址空间
+        // cause: 
+        // 为了确保进程 A 不会访问到进程 B 的地址空间
+        // 页目录表包含了虚拟地址到物理地址的映射关系,将当前进程的虚拟地址空间映射关系切换为新进程的映射关系.
+        // 确保指令和数据的地址转换是基于新进程的页目录表进行的
+        lcr3(current->cr3);// 修改 CR3 寄存器(CR3寄存器:页目录表（PDT）的基地址)，加载新页目录表的基地址
+        // 上下文切换
+        // cause:
+        // 保存当前进程的信息,以便之后能够正确地恢复到当前进程
+        // 将新进程的上下文信息加载到相应的寄存器和寄存器状态寄存器中，确保 CPU 开始执行新进程的代码
+        // 禁用中断确保在切换期间不会被中断打断
+        switch_to(&(temp->context),&(proc->context));
+        // 恢复中断状态
+        local_intr_restore(intr_flag);
     }
 }
 
@@ -298,6 +327,45 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     //    5. insert proc_struct into hash_list && proc_list
     //    6. call wakeup_proc to make the new child process RUNNABLE
     //    7. set ret vaule using child proc's pid
+    // 分配一个进程控制块
+    proc = alloc_proc();
+    if(proc==NULL)//分配失败
+        goto fork_out;  
+
+    // 设置当前进程为新进程的父进程
+    proc->parent = current;
+
+    // 为新进程分配内核栈
+    if(setup_kstack(proc))
+        goto bad_fork_cleanup_kstack;//跳转进行清理
+
+    //复 制进程的内存布局信息，以确保新进程拥有与原进程相同的内存环境
+    if(copy_mm(clone_flags,proc))
+        goto bad_fork_cleanup_proc;//失败则进行清理
+  
+    // 复制原进程的上下文到新进程
+    copy_thread(proc, stack, tf);
+
+    //get_pid中的全局变量需要原子性的更改，禁止中断
+    bool intr_flag;
+    local_intr_save(intr_flag);
+
+    // 为新进程分配一个唯一的进程号
+    proc->pid = get_pid();
+
+    // 将新进程添加到进程列表，并允许中断
+    hash_proc(proc);
+    list_add(&proc_list,&(proc->list_link));//将proc->list_link加到proc_list后
+    nr_process ++;//更新进程数量计数器
+    local_intr_save(intr_flag);
+
+    // 唤醒新进程，进入可调度状态
+    wakeup_proc(proc);
+  
+    // 返回新进程号pid
+    ret = proc->pid;
+
+
 
     
 
